@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dead & Company — Internet Archive Browser</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222d;
+      --border: #2d3a4a;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #6eb5ff;
+      --accent-dim: #4a8fd4;
+      --row-alt: rgba(255, 255, 255, 0.03);
+      --danger: #f07178;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(165deg, #0c1018 0%, var(--bg) 40%, #121a24 100%);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+    header h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 0.35rem;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    header a { color: var(--accent); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      margin: 1.25rem 0 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 140px;
+    }
+    .field label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    select, input[type="search"], input[type="date"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.45rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      min-width: 0;
+    }
+    select:focus, input:focus {
+      outline: 2px solid var(--accent-dim);
+      outline-offset: 1px;
+    }
+    .field.grow { flex: 1 1 200px; }
+    button {
+      background: var(--accent);
+      color: #0a0e14;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .status {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .status strong { color: var(--text); }
+    .err {
+      color: var(--danger);
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+    }
+    .table-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    tbody tr:nth-child(even) { background: var(--row-alt); }
+    tbody tr:hover { background: rgba(110, 181, 255, 0.08); }
+    td a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    td a:hover { text-decoration: underline; }
+    .mono { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; }
+    @media (max-width: 720px) {
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .field { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Dead & Company — Archive browser</h1>
+      <p>
+        Live recordings from the
+        <a href="https://archive.org/details/DeadAndCompany" target="_blank" rel="noopener">DeadAndCompany</a>
+        collection on the Internet Archive. Data loads directly from Archive.org’s search API (no server required).
+      </p>
+    </header>
+
+    <div class="toolbar">
+      <div class="field grow">
+        <label for="q">Title / ID contains</label>
+        <input type="search" id="q" placeholder="Filter loaded rows…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="loc">Location</label>
+        <select id="loc"><option value="">All</option></select>
+      </div>
+      <div class="field">
+        <label for="artist">Artist</label>
+        <select id="artist"><option value="">All</option></select>
+      </div>
+      <div class="field">
+        <label for="qual">Encoding quality</label>
+        <select id="qual"><option value="">All</option></select>
+      </div>
+      <div class="field">
+        <label for="uploadFrom">Upload from</label>
+        <input type="date" id="uploadFrom" />
+      </div>
+      <div class="field">
+        <label for="uploadTo">Upload to</label>
+        <input type="date" id="uploadTo" />
+      </div>
+      <div class="field">
+        <label for="sort">Sort</label>
+        <select id="sort">
+          <option value="upload-desc">Upload date (newest)</option>
+          <option value="upload-asc">Upload date (oldest)</option>
+          <option value="show-desc">Show date (newest)</option>
+          <option value="show-asc">Show date (oldest)</option>
+          <option value="title-asc">Title (A–Z)</option>
+          <option value="venue-asc">Venue (A–Z)</option>
+        </select>
+      </div>
+      <button type="button" id="reload">Reload collection</button>
+      <button type="button" id="export" class="secondary" disabled>Export CSV</button>
+    </div>
+
+    <p class="status" id="status">Loading…</p>
+    <p class="err" id="err" hidden></p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Show date</th>
+            <th>Title</th>
+            <th>Venue</th>
+            <th>Location</th>
+            <th>Artist</th>
+            <th>Upload date</th>
+            <th>Encoding</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const COLLECTION = "DeadAndCompany";
+  const ROWS = 100;
+  const SEARCH_FIELDS = [
+    "identifier", "title", "creator", "date", "venue", "coverage",
+    "publicdate", "addeddate", "format"
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status");
+  const errEl = $("err");
+  const tbody = $("tbody");
+
+  /** @type {Array<Record<string, unknown>>} */
+  let rawDocs = [];
+  /** @type {Array<ReturnType<typeof normalizeDoc>>} */
+  let items = [];
+
+  function showError(msg) {
+    errEl.hidden = !msg;
+    errEl.textContent = msg || "";
+  }
+
+  function buildSearchUrl(start) {
+    const q = encodeURIComponent("collection:" + COLLECTION);
+    const fl = SEARCH_FIELDS.map((f) => "fl[]=" + encodeURIComponent(f)).join("&");
+    return (
+      "https://archive.org/advancedsearch.php?" +
+      "q=" + q +
+      "&" + fl +
+      "&rows=" + ROWS +
+      "&start=" + start +
+      "&output=json"
+    );
+  }
+
+  async function fetchAllDocs() {
+    const out = [];
+    let start = 0;
+    let total = Infinity;
+    while (start < total) {
+      const url = buildSearchUrl(start);
+      const res = await fetch(url, { credentials: "omit" });
+      if (!res.ok) throw new Error("HTTP " + res.status + " loading " + url);
+      const data = await res.json();
+      const resp = data && data.response;
+      if (!resp || !Array.isArray(resp.docs)) throw new Error("Unexpected API response shape.");
+      total = resp.numFound || 0;
+      out.push(...resp.docs);
+      start += resp.docs.length;
+      statusEl.innerHTML =
+        "Loading… <strong>" + out.length + "</strong> / <strong>" + total + "</strong> items";
+      if (resp.docs.length === 0) break;
+    }
+    return out;
+  }
+
+  function firstCreator(c) {
+    if (c == null) return "";
+    if (Array.isArray(c)) return c.map(String).join(", ");
+    return String(c);
+  }
+
+  /**
+   * Infer a coarse encoding label from Archive.org `format` multi-valued field and identifier.
+   * @param {unknown} formats
+   * @param {string} identifier
+   */
+  function inferEncoding(formats, identifier) {
+    const id = (identifier || "").toLowerCase();
+    const list = Array.isArray(formats) ? formats : formats != null ? [formats] : [];
+    const blob = list.map((x) => String(x).toLowerCase()).join(" ");
+
+    if (blob.includes("24bit") || /flac24|24bit|24-bit/.test(id)) return "24-bit FLAC";
+    if (blob.includes("flac") || /\.flac\d+/.test(id) || id.includes("flac")) {
+      if (/flac24|24/.test(id) && !/flac16/.test(id)) return "24-bit FLAC";
+      return "16-bit FLAC";
+    }
+    if (blob.includes("vbr mp3") || id.includes(".mp3")) return "MP3 (VBR)";
+    if (blob.includes("ogg vorbis") || id.includes(".ogg")) return "Ogg Vorbis";
+    if (blob.includes("shorten") || id.includes(".shn")) return "Shorten (SHN)";
+    if (blob.includes("aiff") || id.includes(".aif")) return "AIFF";
+    if (blob.includes("wave") || id.includes(".wav")) return "WAV";
+    return "Other / see item";
+  }
+
+  function parseArchiveDate(s) {
+    if (s == null || s === "") return null;
+    const str = String(s).trim();
+    const iso = Date.parse(str);
+    if (!Number.isNaN(iso)) return new Date(iso);
+    const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) {
+      const d = Date.parse(m[1] + "T12:00:00Z");
+      return Number.isNaN(d) ? null : new Date(d);
+    }
+    return null;
+  }
+
+  function formatDate(d) {
+    if (!d) return "—";
+    try {
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return String(d);
+    }
+  }
+
+  function normalizeDoc(doc) {
+    const identifier = String(doc.identifier || "");
+    const title = String(doc.title || identifier);
+    const venue = doc.venue != null ? String(doc.venue) : "";
+    const coverage = doc.coverage != null ? String(doc.coverage) : "";
+    const artist = firstCreator(doc.creator);
+    const encoding = inferEncoding(doc.format, identifier);
+    const showDate = parseArchiveDate(doc.date);
+    const uploadRaw = doc.publicdate || doc.addeddate;
+    const uploadDate = parseArchiveDate(uploadRaw);
+
+    const locationKey = coverage || venue || "";
+
+    return {
+      identifier,
+      title,
+      venue,
+      coverage,
+      locationKey,
+      artist,
+      encoding,
+      showDate,
+      uploadDate,
+      archiveUrl: "https://archive.org/details/" + encodeURIComponent(identifier),
+    };
+  }
+
+  function uniqueSorted(arr) {
+    return [...new Set(arr.filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }
+
+  function populateFilters() {
+    const locSel = $("loc");
+    const artSel = $("artist");
+    const qualSel = $("qual");
+
+    const locs = uniqueSorted(items.map((x) => x.locationKey).filter(Boolean));
+    const arts = uniqueSorted(items.map((x) => x.artist).filter(Boolean));
+    const quals = uniqueSorted(items.map((x) => x.encoding));
+
+    const keep = (sel, vals, cur) => {
+      const v = cur;
+      sel.innerHTML = '<option value="">All</option>';
+      for (const x of vals) {
+        const o = document.createElement("option");
+        o.value = x;
+        o.textContent = x;
+        sel.appendChild(o);
+      }
+      if (v && [...sel.options].some((o) => o.value === v)) sel.value = v;
+    };
+
+    keep(locSel, locs, locSel.value);
+    keep(artSel, arts, artSel.value);
+    keep(qualSel, quals, qualSel.value);
+  }
+
+  function applyFilters() {
+    const q = ($("q").value || "").trim().toLowerCase();
+    const loc = $("loc").value;
+    const artist = $("artist").value;
+    const qual = $("qual").value;
+    const uFrom = $("uploadFrom").value ? new Date($("uploadFrom").value + "T00:00:00") : null;
+    const uTo = $("uploadTo").value ? new Date($("uploadTo").value + "T23:59:59.999") : null;
+    const sort = $("sort").value;
+
+    let rows = items.slice();
+
+    if (q) {
+      rows = rows.filter((it) => {
+        const hay = (it.title + " " + it.identifier + " " + it.venue).toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    if (loc) rows = rows.filter((it) => it.locationKey === loc);
+    if (artist) rows = rows.filter((it) => it.artist === artist);
+    if (qual) rows = rows.filter((it) => it.encoding === qual);
+    if (uFrom) rows = rows.filter((it) => it.uploadDate && it.uploadDate >= uFrom);
+    if (uTo) rows = rows.filter((it) => it.uploadDate && it.uploadDate <= uTo);
+
+    rows.sort((a, b) => {
+      switch (sort) {
+        case "upload-desc":
+          return (b.uploadDate?.getTime() || 0) - (a.uploadDate?.getTime() || 0);
+        case "upload-asc":
+          return (a.uploadDate?.getTime() || 0) - (b.uploadDate?.getTime() || 0);
+        case "show-desc":
+          return (b.showDate?.getTime() || 0) - (a.showDate?.getTime() || 0);
+        case "show-asc":
+          return (a.showDate?.getTime() || 0) - (b.showDate?.getTime() || 0);
+        case "title-asc":
+          return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+        case "venue-asc":
+          return (a.venue || "").localeCompare(b.venue || "", undefined, { sensitivity: "base" });
+        default:
+          return 0;
+      }
+    });
+
+    tbody.replaceChildren();
+    const frag = document.createDocumentFragment();
+    for (const it of rows) {
+      const tr = document.createElement("tr");
+      const tdShow = document.createElement("td");
+      tdShow.textContent = formatDate(it.showDate);
+      const tdTitle = document.createElement("td");
+      const a = document.createElement("a");
+      a.href = it.archiveUrl;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = it.title;
+      tdTitle.appendChild(a);
+      const idDiv = document.createElement("div");
+      idDiv.className = "mono";
+      idDiv.textContent = it.identifier;
+      tdTitle.appendChild(idDiv);
+      const tdVenue = document.createElement("td");
+      tdVenue.textContent = it.venue || "—";
+      const tdCov = document.createElement("td");
+      tdCov.textContent = it.coverage || "—";
+      const tdArt = document.createElement("td");
+      tdArt.textContent = it.artist || "—";
+      const tdUp = document.createElement("td");
+      tdUp.textContent = formatDate(it.uploadDate);
+      const tdEnc = document.createElement("td");
+      tdEnc.textContent = it.encoding;
+      tr.append(tdShow, tdTitle, tdVenue, tdCov, tdArt, tdUp, tdEnc);
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+
+    statusEl.innerHTML =
+      "Showing <strong>" +
+      rows.length +
+      "</strong> of <strong>" +
+      items.length +
+      "</strong> loaded items.";
+    $("export").disabled = rows.length === 0;
+    window.__exportRows = rows;
+  }
+
+  function exportCsv() {
+    const rows = window.__exportRows || [];
+    if (!rows.length) return;
+    const header = [
+      "show_date",
+      "title",
+      "identifier",
+      "venue",
+      "location_coverage",
+      "artist",
+      "upload_date",
+      "encoding",
+      "archive_url",
+    ];
+    const lines = [header.join(",")];
+    for (const it of rows) {
+      const line = [
+        csv(it.showDate ? it.showDate.toISOString().slice(0, 10) : ""),
+        csv(it.title),
+        csv(it.identifier),
+        csv(it.venue),
+        csv(it.coverage),
+        csv(it.artist),
+        csv(it.uploadDate ? it.uploadDate.toISOString().slice(0, 10) : ""),
+        csv(it.encoding),
+        csv(it.archiveUrl),
+      ];
+      lines.push(line.join(","));
+    }
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "dead-and-company-archive-filtered.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function csv(s) {
+    const x = String(s);
+    if (/[",\r\n]/.test(x)) return '"' + x.replace(/"/g, '""') + '"';
+    return x;
+  }
+
+  async function load() {
+    $("reload").disabled = true;
+    showError("");
+    statusEl.textContent = "Loading…";
+    tbody.innerHTML = "";
+    $("export").disabled = true;
+    try {
+      rawDocs = await fetchAllDocs();
+      items = rawDocs.map(normalizeDoc);
+      populateFilters();
+      applyFilters();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError("Could not load data: " + msg);
+      statusEl.textContent = "Load failed.";
+    } finally {
+      $("reload").disabled = false;
+    }
+  }
+
+  $("reload").addEventListener("click", load);
+  $("export").addEventListener("click", exportCsv);
+  ["q", "loc", "artist", "qual", "uploadFrom", "uploadTo", "sort"].forEach((id) => {
+    $(id).addEventListener("input", applyFilters);
+    $(id).addEventListener("change", applyFilters);
+  });
+
+  load();
+})();
+  </script>
+</body>
+</html>

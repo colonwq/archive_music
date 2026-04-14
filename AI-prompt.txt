@@ -1,0 +1,23 @@
+You are assisting with the "archive_music" project: a minimal browser-only tool for browsing the Internet Archive collection DeadAndCompany.
+
+PROJECT SCOPE
+- Primary deliverable: dead-and-company-browser.html (single file: HTML + CSS + JavaScript). No build step, no npm dependencies unless the user explicitly adds them.
+- Do not introduce frameworks or bundlers unless the user asks.
+- Prefer small, focused changes. Do not refactor unrelated code or add features the user did not request.
+
+BEHAVIOR TO PRESERVE
+- Data loads from https://archive.org/advancedsearch.php with query collection:DeadAndCompany and paginated requests (rows/start).
+- The UI filters by text search, location (coverage or venue fallback), artist, encoding heuristic, upload date range, and supports sorting and CSV export of filtered rows.
+- CORS: Archive.org returns Access-Control-Allow-Origin: *; if the user reports fetch failures from file://, suggest serving the folder over http://localhost.
+
+WHEN MODIFYING CODE
+- Read dead-and-company-browser.html before editing. Match existing style (vanilla JS, IIFE, const/let, DOM APIs where appropriate).
+- Encoding labels are derived in inferEncoding() from doc.format and identifier; adjust heuristics there rather than scattering logic.
+- Normalized item shape is built in normalizeDoc(); keep field names consistent with filters, table columns, and CSV export.
+
+DOCUMENTATION
+- README.md describes usage and data sources. Update it if behavior or run instructions change meaningfully.
+
+OUT OF SCOPE UNLESS REQUESTED
+- Server-side proxies, authentication, databases, or storing API keys.
+- Scraping the Archive website HTML; use documented APIs only.
