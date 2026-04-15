@@ -6,18 +6,23 @@ PROJECT SCOPE
 - Prefer small, focused changes. Do not refactor unrelated code or add features the user did not request.
 
 BEHAVIOR TO PRESERVE
-- Data loads from https://archive.org/advancedsearch.php with query collection:DeadAndCompany and paginated requests (rows/start).
-- The UI filters by text search, location (coverage or venue fallback), artist, encoding heuristic, upload date range, and supports sorting and CSV export of filtered rows.
-- CORS: Archive.org returns Access-Control-Allow-Origin: *; if the user reports fetch failures from file://, suggest serving the folder over http://localhost.
+- Collection data loads from https://archive.org/advancedsearch.php with query collection:DeadAndCompany and paginated requests (rows/start).
+- The main table filters by text search, location (coverage or venue fallback), artist, encoding heuristic, upload date range, and supports sorting and CSV export of filtered rows.
+- Per-show expansion: clicking "List files" on a row sets selectedId, re-renders the table, and inserts a full-width expand row (colspan 8) immediately below that concert. The expand row contains Webamp link, Archive link, loading state, errors, and a file list. Clicking "List files" on the same row again toggles closed. "Close" in the expand panel clears selection.
+- File lists use https://archive.org/metadata/{identifier} (cached in memory per identifier). Audio files are filtered with isMusicFile(); links use https://archive.org/download/{identifier}/{filename}.
+- Webamp URL pattern: https://archive.org/details/{identifier}?webamp=default (details page, not embed).
+- CORS: Archive.org returns Access-Control-Allow-Origin: * on these APIs; if the user reports fetch failures from file://, suggest serving the folder over http://localhost.
 
 WHEN MODIFYING CODE
 - Read dead-and-company-browser.html before editing. Match existing style (vanilla JS, IIFE, const/let, DOM APIs where appropriate).
-- Encoding labels are derived in inferEncoding() from doc.format and identifier; adjust heuristics there rather than scattering logic.
+- Encoding labels for the main table are derived in inferEncoding() from doc.format and identifier.
 - Normalized item shape is built in normalizeDoc(); keep field names consistent with filters, table columns, and CSV export.
+- Expand-row UI is built in buildExpandRow(); file rows are filled in populateFileList(). Helpers getExpandRowEl() / getExpandRoot() locate the inline panel by data-expand-for (string compare, not CSS escaping).
+- Async selectShow() must guard against stale responses if selectedId changes before metadata returns.
 
 DOCUMENTATION
-- README.md describes usage and data sources. Update it if behavior or run instructions change meaningfully.
+- README.md describes usage, APIs, Webamp URL, and inline expansion. Update it when behavior or data flow changes meaningfully.
 
 OUT OF SCOPE UNLESS REQUESTED
 - Server-side proxies, authentication, databases, or storing API keys.
-- Scraping the Archive website HTML; use documented APIs only.
+- Scraping the Archive website HTML; use documented APIs (advancedsearch, metadata) only.

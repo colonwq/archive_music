@@ -136,8 +136,63 @@
       letter-spacing: 0.04em;
       white-space: nowrap;
     }
-    tbody tr:nth-child(even) { background: var(--row-alt); }
-    tbody tr:hover { background: rgba(110, 181, 255, 0.08); }
+    tbody tr.concert-row.row-alt { background: var(--row-alt); }
+    tbody tr.concert-row:hover { background: rgba(110, 181, 255, 0.08); }
+    tbody tr.concert-row.selected {
+      background: rgba(110, 181, 255, 0.12);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .btn-files {
+      font-size: 0.75rem;
+      padding: 0.35rem 0.6rem;
+      white-space: nowrap;
+    }
+    tr.expand-row td {
+      padding: 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.22);
+      vertical-align: top;
+    }
+    .row-expand {
+      padding: 0.85rem 1rem 1rem;
+      border-left: 3px solid var(--accent);
+      margin: 0;
+      animation: expandIn 0.2s ease-out;
+    }
+    @keyframes expandIn {
+      from { opacity: 0.6; }
+      to { opacity: 1; }
+    }
+    .detail-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .detail-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+    .detail-webamp a { font-weight: 600; }
+    .detail-meta { margin: 0.35rem 0 0.75rem; font-size: 0.88rem; }
+    .file-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      max-height: min(42vh, 520px);
+      overflow-y: auto;
+    }
+    .file-list li {
+      margin-bottom: 0.35rem;
+      word-break: break-word;
+    }
+    .file-list .file-meta {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-left: 0.25rem;
+    }
     td a {
       color: var(--accent);
       text-decoration: none;
@@ -209,6 +264,7 @@
         <thead>
           <tr>
             <th>Show date</th>
+            <th scope="col">Select</th>
             <th>Title</th>
             <th>Venue</th>
             <th>Location</th>
@@ -237,15 +293,286 @@
   const statusEl = $("status");
   const errEl = $("err");
   const tbody = $("tbody");
+  const TABLE_COLS = 8;
 
   /** @type {Array<Record<string, unknown>>} */
   let rawDocs = [];
   /** @type {Array<ReturnType<typeof normalizeDoc>>} */
   let items = [];
+  /** @type {string | null} */
+  let selectedId = null;
+  /** @type {Record<string, unknown>} */
+  const metadataCache = Object.create(null);
 
   function showError(msg) {
     errEl.hidden = !msg;
     errEl.textContent = msg || "";
+  }
+
+  function webampUrl(identifier) {
+    return (
+      "https://archive.org/details/" +
+      encodeURIComponent(identifier) +
+      "?webamp=default"
+    );
+  }
+
+  function downloadFileUrl(identifier, fileName) {
+    return (
+      "https://archive.org/download/" +
+      encodeURIComponent(identifier) +
+      "/" +
+      encodeURIComponent(fileName)
+    );
+  }
+
+  /**
+   * @param {Record<string, unknown>} f Archive `files` entry
+   */
+  function isMusicFile(f) {
+    const name = f.name != null ? String(f.name) : "";
+    if (!name || name.startsWith("__")) return false;
+    const lower = name.toLowerCase();
+    if (
+      /\.(xml|txt|png|jpg|jpeg|gif|webp|pdf|torrent|md5|afpk|json|gz|htm|html)$/i.test(
+        lower
+      )
+    ) {
+      return false;
+    }
+    if (/_spectrogram\.|_esslow\.|_esshigh\.|\.afpk$/i.test(lower)) return false;
+    const fmt = String(f.format || "").toLowerCase();
+    if (
+      fmt.includes("fingerprint") ||
+      fmt.includes("spectrogram") ||
+      fmt.includes("columbia peaks") ||
+      fmt.includes("essentia") ||
+      fmt.includes("checksum")
+    ) {
+      return false;
+    }
+    if (
+      fmt === "metadata" ||
+      fmt === "archive bittorrent" ||
+      fmt === "item tile" ||
+      fmt === "jpeg thumb" ||
+      fmt === "derivation rules"
+    ) {
+      return false;
+    }
+    const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
+    if (
+      ["flac", "mp3", "ogg", "opus", "shn", "wav", "aif", "aiff", "m4a", "aac"].includes(
+        ext
+      )
+    ) {
+      return true;
+    }
+    return ["flac", "vbr mp3", "ogg vorbis", "shorten", "aiff", "wave"].includes(fmt);
+  }
+
+  function formatFileSize(n) {
+    if (n == null || n === "") return "";
+    const num = Number(n);
+    if (!Number.isFinite(num)) return "";
+    if (num < 1024) return num + " B";
+    if (num < 1024 * 1024) return (num / 1024).toFixed(1) + " KB";
+    return (num / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  /**
+   * @param {Record<string, unknown>[]} files
+   */
+  function collectMusicFiles(files) {
+    if (!Array.isArray(files)) return [];
+    const list = files.filter(isMusicFile);
+    list.sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+        numeric: true,
+      })
+    );
+    return list;
+  }
+
+  async function fetchMetadata(identifier) {
+    if (metadataCache[identifier]) return metadataCache[identifier];
+    const url = "https://archive.org/metadata/" + encodeURIComponent(identifier);
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error("HTTP " + res.status + " loading metadata");
+    const data = await res.json();
+    metadataCache[identifier] = data;
+    return data;
+  }
+
+  function getExpandRowEl(identifier) {
+    return Array.from(tbody.querySelectorAll("tr.expand-row")).find(
+      function (tr) {
+        return tr.getAttribute("data-expand-for") === identifier;
+      }
+    );
+  }
+
+  /**
+   * @param {HTMLUListElement} ul
+   * @param {ReturnType<typeof normalizeDoc>} it
+   * @param {Record<string, unknown>[]} files
+   */
+  function populateFileList(ul, it, files) {
+    ul.replaceChildren();
+    if (files.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "No audio files found in metadata.";
+      li.style.color = "var(--muted)";
+      ul.appendChild(li);
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const f of files) {
+      const name = String(f.name);
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = downloadFileUrl(it.identifier, name);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = name;
+      li.appendChild(a);
+      const fmt = f.format != null ? String(f.format) : "";
+      const bits = [];
+      if (fmt) bits.push(fmt);
+      const br = f.bitrate != null ? String(f.bitrate) : "";
+      if (br) bits.push(br + " kbps");
+      const sz = formatFileSize(f.size);
+      if (sz) bits.push(sz);
+      const trackTitle = f.title != null ? String(f.title) : "";
+      if (trackTitle && trackTitle !== name) bits.push(trackTitle);
+      if (bits.length) {
+        const span = document.createElement("span");
+        span.className = "file-meta";
+        span.textContent = " — " + bits.join(" · ");
+        li.appendChild(span);
+      }
+      frag.appendChild(li);
+    }
+    ul.appendChild(frag);
+  }
+
+  /**
+   * @param {ReturnType<typeof normalizeDoc>} it
+   */
+  function buildExpandRow(it) {
+    const tr = document.createElement("tr");
+    tr.className = "expand-row";
+    tr.setAttribute("data-expand-for", it.identifier);
+    const td = document.createElement("td");
+    td.colSpan = TABLE_COLS;
+    const root = document.createElement("div");
+    root.className = "row-expand";
+    root.setAttribute("data-expand-root", it.identifier);
+    root.setAttribute("aria-live", "polite");
+
+    const head = document.createElement("div");
+    head.className = "detail-head";
+    const h2 = document.createElement("h2");
+    h2.textContent = it.title;
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "secondary expand-close";
+    closeBtn.textContent = "Close";
+    closeBtn.addEventListener("click", function () {
+      clearSelection();
+    });
+    head.append(h2, closeBtn);
+
+    const pWeb = document.createElement("p");
+    pWeb.className = "detail-webamp";
+    const aWeb = document.createElement("a");
+    aWeb.href = webampUrl(it.identifier);
+    aWeb.target = "_blank";
+    aWeb.rel = "noopener";
+    aWeb.textContent = "Play full concert in Webamp";
+    pWeb.appendChild(aWeb);
+
+    const pAr = document.createElement("p");
+    pAr.className = "detail-meta";
+    const aAr = document.createElement("a");
+    aAr.href = it.archiveUrl;
+    aAr.target = "_blank";
+    aAr.rel = "noopener";
+    aAr.textContent = "Open item page on Archive.org";
+    pAr.appendChild(aAr);
+
+    const pLoad = document.createElement("p");
+    pLoad.className = "status expand-loading";
+    pLoad.textContent = "Loading file list…";
+
+    const pErr = document.createElement("p");
+    pErr.className = "err expand-error";
+    pErr.hidden = true;
+
+    const ul = document.createElement("ul");
+    ul.className = "file-list";
+
+    root.append(head, pWeb, pAr, pLoad, pErr, ul);
+    td.appendChild(root);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function getExpandRoot(identifier) {
+    const tr = getExpandRowEl(identifier);
+    return tr ? tr.querySelector(".row-expand") : null;
+  }
+
+  /**
+   * @param {boolean} [skipRefresh] Pass true when the table is about to be cleared (e.g. full reload).
+   */
+  function clearSelection(skipRefresh) {
+    selectedId = null;
+    if (!skipRefresh) applyFilters();
+  }
+
+  async function selectShow(it) {
+    if (selectedId === it.identifier) {
+      clearSelection();
+      return;
+    }
+
+    const id = it.identifier;
+    selectedId = id;
+    applyFilters();
+
+    getExpandRowEl(id)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    try {
+      const meta = await fetchMetadata(id);
+      if (selectedId !== id) return;
+      const files = collectMusicFiles(
+        /** @type {Record<string, unknown>[]} */ (meta.files || [])
+      );
+      const root = getExpandRoot(id);
+      if (!root) return;
+      const pLoad = root.querySelector(".expand-loading");
+      const pErr = /** @type {HTMLElement} */ (root.querySelector(".expand-error"));
+      const ul = /** @type {HTMLUListElement} */ (root.querySelector(".file-list"));
+      if (pLoad) pLoad.hidden = true;
+      if (pErr) {
+        pErr.hidden = true;
+        pErr.textContent = "";
+      }
+      populateFileList(ul, it, files);
+    } catch (e) {
+      if (selectedId !== id) return;
+      const root = getExpandRoot(id);
+      if (!root) return;
+      const pLoad = root.querySelector(".expand-loading");
+      const pErr = /** @type {HTMLElement} */ (root.querySelector(".expand-error"));
+      if (pLoad) pLoad.hidden = true;
+      if (pErr) {
+        pErr.hidden = false;
+        pErr.textContent =
+          "Could not load files: " + (e instanceof Error ? e.message : String(e));
+      }
+    }
   }
 
   function buildSearchUrl(start) {
@@ -440,10 +767,29 @@
 
     tbody.replaceChildren();
     const frag = document.createDocumentFragment();
+    let rowIdx = 0;
     for (const it of rows) {
       const tr = document.createElement("tr");
+      tr.classList.add("concert-row");
+      if (rowIdx % 2 === 1) tr.classList.add("row-alt");
+      rowIdx++;
+      if (it.identifier === selectedId) tr.classList.add("selected");
       const tdShow = document.createElement("td");
       tdShow.textContent = formatDate(it.showDate);
+      const tdSelect = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-files";
+      btn.textContent = "List files";
+      btn.setAttribute("aria-label", "List audio files and Webamp link for this show");
+      btn.setAttribute(
+        "aria-expanded",
+        it.identifier === selectedId ? "true" : "false"
+      );
+      btn.addEventListener("click", function () {
+        selectShow(it);
+      });
+      tdSelect.appendChild(btn);
       const tdTitle = document.createElement("td");
       const a = document.createElement("a");
       a.href = it.archiveUrl;
@@ -465,8 +811,11 @@
       tdUp.textContent = formatDate(it.uploadDate);
       const tdEnc = document.createElement("td");
       tdEnc.textContent = it.encoding;
-      tr.append(tdShow, tdTitle, tdVenue, tdCov, tdArt, tdUp, tdEnc);
+      tr.append(tdShow, tdSelect, tdTitle, tdVenue, tdCov, tdArt, tdUp, tdEnc);
       frag.appendChild(tr);
+      if (it.identifier === selectedId) {
+        frag.appendChild(buildExpandRow(it));
+      }
     }
     tbody.appendChild(frag);
 
@@ -526,6 +875,7 @@
   async function load() {
     $("reload").disabled = true;
     showError("");
+    clearSelection(true);
     statusEl.textContent = "Loading…";
     tbody.innerHTML = "";
     $("export").disabled = true;
