@@ -2,11 +2,14 @@
 
 A small, dependency-free web page that lists and filters live recordings from the [DeadAndCompany](https://archive.org/details/DeadAndCompany) collection on the Internet Archive. Everything runs in the browser; there is no backend.
 
+![Main view: filters and concert table](dead-and-company-browser.png)
+
 ## Contents
 
 | File | Description |
 |------|-------------|
 | `dead-and-company-browser.html` | Single HTML file (markup, styles, and script). Open in a modern browser or serve locally. |
+| `dead-and-company-browser.png` | Screenshot of the main UI (filters and table). |
 
 ## Quick start
 
